@@ -1,28 +1,50 @@
 from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from pathlib import Path
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
 
-def generate_pdf(username, repo_list):
-    pdf_file = Path("reports") / f"{username}_report.pdf"
-    c = canvas.Canvas(str(pdf_file), pagesize=A4)
-    width, height = A4
-
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, height - 50, f"GitHub Report: {username}")
+def generate_pdf(username, repos):
+    filename = f"reports/{username}_report.pdf"
     
-    y = height - 100
-    c.setFont("Helvetica", 12)
-
-    if not repo_list:
-        c.drawString(50, y, "No repositories found.")
-    else:
-        for repo in repo_list:
-            c.drawString(50, y, f"Repo: {repo['name']}")
-            c.drawString(60, y - 15, f"URL: {repo['html_url']}")
-            c.drawString(60, y - 30, f"Commits: {repo['commits']} | Last commit: {repo['last_commit']}")
-            y -= 60
-            if y < 100:
-                c.showPage()
-                y = height - 50
-
-    c.save()
+    doc = SimpleDocTemplate(filename, pagesize=A4)
+    elements = []
+    
+    styles = getSampleStyleSheet()
+    title = Paragraph(f"GitHub Report for {username}", styles['Title'])
+    elements.append(title)
+    elements.append(Spacer(1, 20))
+    
+    # Table data with header
+    data = [["Project Name", "Number of Commits", "Last Commit Date", "URL"]]
+    
+    # Add repo data
+    for repo in repos:
+        data.append([
+            Paragraph(repo.get("name", "N/A"), styles['Normal']),
+            Paragraph(str(repo.get("commits_count", "N/A")), styles['Normal']),
+            Paragraph(repo.get("last_commit", "N/A"), styles['Normal']),
+            Paragraph(repo.get("html_url", "N/A"), styles['Normal'])
+        ])
+    
+    # Adjust column widths (make URL wider)
+    col_widths = [150, 100, 120, 220]  # Increase the last one
+    
+    table = Table(data, colWidths=col_widths)
+    
+    # Style table
+    style = TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.lightblue),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('ALIGN',(0,0),(-1,-1),'CENTER'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,0), 12),
+        ('BOTTOMPADDING', (0,0), (-1,0), 12),
+        ('GRID', (0,0), (-1,-1), 1, colors.black),
+        ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+    ])
+    table.setStyle(style)
+    
+    elements.append(table)
+    
+    doc.build(elements)
+    print(f"✅ PDF generated: {filename}")
