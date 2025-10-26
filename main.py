@@ -1,46 +1,49 @@
+from flask import Flask, render_template, request, send_file
 from students.student_manager import load_students, get_username_by_regno, generate_summary_csv
 from github_api.github_fetcher import fetch_github_data_for_user
 from reports.pdf_report import generate_student_pdf
+import os
 
-def main():
-    print("Select an option:")
-    print("1️⃣ Generate summary CSV for all students")
-    print("2️⃣ Generate PDF for a single student")
-    choice = input("Enter 1 or 2: ").strip()
+app = Flask(__name__)
 
-    students = load_students()
-    if not students:
-        print("❌ No students found in students.csv")
-        return
-
-    if choice == "1":
-        all_data = []
-        for regno, username in students.items():
-            print(f"Processing {regno} -> {username} ...")
-            data = fetch_github_data_for_user(username)
-            repos = data.get("repos", [])
-            total_commits = sum(int(repo.get("commits_count", 0)) for repo in repos)
-            all_data.append({
-                "regno": regno,
-                "username": username,
-                "repos_count": len(repos),
-                "total_commits": total_commits
-            })
-        if all_data:
+@app.route("/", methods=["GET", "POST"])
+def index():
+    message = ""
+    if request.method == "POST":
+        action = request.form.get("action")
+        
+        if action == "summary":
+            all_students = load_students()
+            all_data = []
+            for regno, username in all_students.items():
+                try:
+                    data = fetch_github_data_for_user(username)
+                    total_commits = sum(repo.get("commits_count", 0) for repo in data.get("repos", []))
+                    all_data.append({
+                        "regno": regno,
+                        "username": username,
+                        "repos_count": len(data.get("repos", [])),
+                        "total_commits": total_commits
+                    })
+                except:
+                    continue
             generate_summary_csv(all_data)
-        else:
-            print("⚠️ No data available to generate summary report.")
-    elif choice == "2":
-        regno = input("Enter the registration number: ").strip()
-        username = get_username_by_regno(regno)
-        if not username:
-            print(f"❌ No student found with RegNo {regno}")
-            return
-        print(f"Processing {regno} -> {username} ...")
-        data = fetch_github_data_for_user(username)
-        generate_student_pdf(username, data.get("repos", []))
-    else:
-        print("❌ Invalid choice")
+            message = "✅ Summary CSV generated at reports/summary_report.csv"
+        
+        elif action == "pdf":
+            regno = request.form.get("regno").strip()
+            username = get_username_by_regno(regno)
+            if not username:
+                message = f"❌ No student found with RegNo {regno}"
+            else:
+                try:
+                    data = fetch_github_data_for_user(username)
+                    generate_student_pdf(username, data.get("repos", []))
+                    message = f"✅ PDF generated at reports/{username}_report.pdf"
+                except Exception as e:
+                    message = f"❌ Error generating PDF: {e}"
+                    
+    return render_template("index.html", message=message)
 
 if __name__ == "__main__":
-    main()
+    app.run(debug=True)

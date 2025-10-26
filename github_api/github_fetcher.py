@@ -1,5 +1,6 @@
 import os
 import requests
+from time import sleep
 
 TOKEN = os.getenv("GITHUB_TOKEN")
 if not TOKEN:
@@ -7,59 +8,32 @@ if not TOKEN:
 
 HEADERS = {"Authorization": f"token {TOKEN}"}
 
-def fetch_github_data_for_user(username):
+def fetch_github_data_for_user(username, max_retries=3):
     """
-    Returns a dict:
-    {
-        "repos": [
-            {
-                "name": ...,
-                "commits_count": ...,
-                "last_commit_date": ...,
-                "url": ...
-            },
-            ...
-        ]
-    }
+    Fetch GitHub repositories and commit info for a user.
+    Returns: { "repos": [ { "name": ..., "commits_count": ..., "last_commit_date": ..., "url": ... } ] }
     """
-    repos_url = f"https://api.github.com/users/{username}/repos?per_page=100"
-    repos_resp = requests.get(repos_url, headers=HEADERS)
-    if repos_resp.status_code != 200:
-        print(f"❌ Error fetching repos for {username}: {repos_resp.status_code}")
-        return {"repos": []}
+    def get_json(url):
+        for attempt in range(max_retries):
+            try:
+                resp = requests.get(url, headers=HEADERS, timeout=10)
+                resp.raise_for_status()
+                return resp.json()
+            except requests.exceptions.RequestException as e:
+                print(f"⚠️ API request failed ({attempt+1}/{max_retries}): {e}")
+                sleep(2)
+        raise Exception(f"Failed to fetch {url} after {max_retries} attempts")
 
-    repos_data = []
-    for repo in repos_resp.json():
-        repo_name = repo.get("name")
-        full_name = repo.get("full_name")
-        html_url = repo.get("html_url")
-
-        # Count total commits correctly using the GitHub API "commits" link
-        commits_count = 0
-        last_commit_date = ""
-        commits_url = f"https://api.github.com/repos/{full_name}/commits?per_page=1"
-        commits_resp = requests.get(commits_url, headers=HEADERS)
-        if commits_resp.status_code == 200 and commits_resp.json():
-            last_commit_date = commits_resp.json()[0].get("commit", {}).get("committer", {}).get("date", "")
-            
-            # Get total commits using "Link" header for pagination
-            if "Link" in commits_resp.headers:
-                links = commits_resp.headers["Link"].split(",")
-                for link in links:
-                    if 'rel="last"' in link:
-                        # Extract page number from URL
-                        last_page_url = link.split(";")[0].strip()[1:-1]
-                        commits_count = int(last_page_url.split("page=")[-1])
-                        break
-                else:
-                    commits_count = 1  # only one commit
-            else:
-                commits_count = len(commits_resp.json())
-        repos_data.append({
+    repos_data = get_json(f"https://api.github.com/users/{username}/repos?per_page=100")
+    result = []
+    for repo in repos_data:
+        repo_name = repo["name"]
+        repo_url = repo["html_url"]
+        commits_list = get_json(f"https://api.github.com/repos/{username}/{repo_name}/commits?per_page=100")
+        result.append({
             "name": repo_name,
-            "commits_count": commits_count,
-            "last_commit_date": last_commit_date,
-            "url": html_url
+            "commits_count": len(commits_list),
+            "last_commit_date": commits_list[0]["commit"]["committer"]["date"] if commits_list else "N/A",
+            "url": repo_url
         })
-
-    return {"repos": repos_data}
+    return {"repos": result}
