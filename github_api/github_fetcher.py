@@ -1,40 +1,65 @@
 import os
 import requests
 
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-if not GITHUB_TOKEN:
+TOKEN = os.getenv("GITHUB_TOKEN")
+if not TOKEN:
     raise Exception("⚠️ Please set the environment variable GITHUB_TOKEN before running.")
 
-HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"}
+HEADERS = {"Authorization": f"token {TOKEN}"}
 
 def fetch_github_data_for_user(username):
-    repos_url = f"https://api.github.com/users/{username}/repos?per_page=100&page=1"
-    try:
-        repos_resp = requests.get(repos_url, headers=HEADERS)
-        repos_resp.raise_for_status()
-        repos = repos_resp.json()
-        repo_data = []
+    """
+    Returns a dict:
+    {
+        "repos": [
+            {
+                "name": ...,
+                "commits_count": ...,
+                "last_commit_date": ...,
+                "url": ...
+            },
+            ...
+        ]
+    }
+    """
+    repos_url = f"https://api.github.com/users/{username}/repos?per_page=100"
+    repos_resp = requests.get(repos_url, headers=HEADERS)
+    if repos_resp.status_code != 200:
+        print(f"❌ Error fetching repos for {username}: {repos_resp.status_code}")
+        return {"repos": []}
 
-        for repo in repos:
-            name = repo.get("name")
-            commits_count = repo.get("stargazers_count", 0)  # replace with your commits logic
-            url = repo.get("html_url")
+    repos_data = []
+    for repo in repos_resp.json():
+        repo_name = repo.get("name")
+        full_name = repo.get("full_name")
+        html_url = repo.get("html_url")
+
+        # Count total commits correctly using the GitHub API "commits" link
+        commits_count = 0
+        last_commit_date = ""
+        commits_url = f"https://api.github.com/repos/{full_name}/commits?per_page=1"
+        commits_resp = requests.get(commits_url, headers=HEADERS)
+        if commits_resp.status_code == 200 and commits_resp.json():
+            last_commit_date = commits_resp.json()[0].get("commit", {}).get("committer", {}).get("date", "")
             
-            # Get last commit date
-            commits_api = f"https://api.github.com/repos/{username}/{name}/commits?per_page=1"
-            commits_resp = requests.get(commits_api, headers=HEADERS)
-            commits_resp.raise_for_status()
-            commits_json = commits_resp.json()
-            last_commit = commits_json[0]["commit"]["committer"]["date"] if commits_json else "N/A"
+            # Get total commits using "Link" header for pagination
+            if "Link" in commits_resp.headers:
+                links = commits_resp.headers["Link"].split(",")
+                for link in links:
+                    if 'rel="last"' in link:
+                        # Extract page number from URL
+                        last_page_url = link.split(";")[0].strip()[1:-1]
+                        commits_count = int(last_page_url.split("page=")[-1])
+                        break
+                else:
+                    commits_count = 1  # only one commit
+            else:
+                commits_count = len(commits_resp.json())
+        repos_data.append({
+            "name": repo_name,
+            "commits_count": commits_count,
+            "last_commit_date": last_commit_date,
+            "url": html_url
+        })
 
-            repo_data.append({
-                "name": name,
-                "commits_count": commits_count,
-                "last_commit": last_commit,
-                "url": url
-            })
-
-        return {"repos": repo_data}
-
-    except requests.exceptions.RequestException as e:
-        return {"error": str(e)}
+    return {"repos": repos_data}

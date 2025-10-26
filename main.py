@@ -6,9 +6,8 @@ def main():
     print("Select an option:")
     print("1️⃣ Generate summary CSV for all students")
     print("2️⃣ Generate PDF for a single student")
-    
     choice = input("Enter 1 or 2: ").strip()
-    
+
     students = load_students()
     if not students:
         print("❌ No students found in students.csv")
@@ -19,19 +18,18 @@ def main():
         for regno, username in students.items():
             print(f"Processing {regno} -> {username} ...")
             data = fetch_github_data_for_user(username)
-            if data.get("error"):
-                print(f"⚠️ Unexpected data for {username}, skipping...")
-                continue
             repos = data.get("repos", [])
-            total_commits = sum(repo.get("commits_count", 0) for repo in repos)
+            total_commits = sum(int(repo.get("commits_count", 0)) for repo in repos)
             all_data.append({
                 "regno": regno,
                 "username": username,
                 "repos_count": len(repos),
                 "total_commits": total_commits
             })
-        generate_summary_csv(all_data)
-    
+        if all_data:
+            generate_summary_csv(all_data)
+        else:
+            print("⚠️ No data available to generate summary report.")
     elif choice == "2":
         regno = input("Enter the registration number: ").strip()
         username = get_username_by_regno(regno)
@@ -40,13 +38,9 @@ def main():
             return
         print(f"Processing {regno} -> {username} ...")
         data = fetch_github_data_for_user(username)
-        if data.get("error"):
-            print(f"❌ Error for {username}: {data['error']}")
-            return
         generate_student_pdf(username, data.get("repos", []))
-    
     else:
-        print("❌ Invalid option")
+        print("❌ Invalid choice")
 
 if __name__ == "__main__":
     main()

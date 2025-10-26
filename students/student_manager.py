@@ -1,8 +1,10 @@
 import csv
 from pathlib import Path
 
+# ----------------------------
+# Students CSV
+# ----------------------------
 STUDENTS_CSV = Path("students/students.csv")
-SUMMARY_CSV = Path("reports/summary_report.csv")
 
 def load_students():
     """
@@ -29,27 +31,31 @@ def get_username_by_regno(regno):
     students = load_students()
     return students.get(regno)
 
+# ----------------------------
+# Summary CSV generation
+# ----------------------------
+SUMMARY_CSV = Path("reports/summary_report.csv")
+
 def generate_summary_csv(all_student_data):
     """
-    Generates summary CSV for all students.
     all_student_data: list of dicts
         Each dict contains:
         { "regno": ..., "username": ..., "repos_count": ..., "total_commits": ... }
     """
+    # Ensure reports folder exists
     SUMMARY_CSV.parent.mkdir(parents=True, exist_ok=True)
     
-    if not all_student_data:
-        print("⚠️ No data available to generate summary report.")
-        return
-    
-    with open(SUMMARY_CSV, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(["RegNo", "Username", "No. of Projects", "Total Commits"])
-        for student in all_student_data:
-            writer.writerow([
-                student.get("regno", ""),
-                student.get("username", ""),
-                student.get("repos_count", 0),
-                student.get("total_commits", 0)
-            ])
-    print(f"✅ Summary CSV saved: {SUMMARY_CSV}")
+    try:
+        with open(SUMMARY_CSV, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["RegNo", "Username", "No. of Projects", "Total Commits"])
+            for student in all_student_data:
+                writer.writerow([
+                    student.get("regno", ""),
+                    student.get("username", ""),
+                    student.get("repos_count", 0),
+                    student.get("total_commits", 0)
+                ])
+        print(f"✅ Summary CSV saved: {SUMMARY_CSV}")
+    except PermissionError:
+        print(f"❌ Permission denied: cannot write to {SUMMARY_CSV}. Close the file if it is open.")
